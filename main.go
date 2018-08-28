@@ -31,7 +31,7 @@ func main() {
 
 	initialOutput, err := runFile(runPath)
 	if err != nil {
-		panic(initialOutput)
+		printError("An error occured, watching for changes..")
 	}
 	fmt.Print(initialOutput)
 
@@ -39,7 +39,7 @@ func main() {
 		changed, newHash, err := checkForChanges(latestHash, filePath)
 		if err != nil {
 			fmt.Println("error reading file, exiting")
-			break
+			continue
 		}
 
 		if changed {
@@ -47,7 +47,8 @@ func main() {
 			fmt.Println("\nfound changes, running:")
 			run(filePath)
 		} else {
-			fmt.Println("no changes found, watching..")
+			// fmt.Println("no changes found, watching..")
+			printDefault("No changes found, watching..")
 			time.Sleep(time.Second)
 		}
 	}
@@ -106,4 +107,12 @@ func getDir() string {
 		panic(err)
 	}
 	return dir
+}
+
+func printError(out string) {
+	fmt.Printf("\x1b[31;1m%s\x1b[0m", out)
+}
+
+func printDefault(out string) {
+	fmt.Printf("\x1b[34;1m%s\x1b[0m\n", out)
 }

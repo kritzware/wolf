@@ -10,3 +10,4 @@ const x = { y: 2, id: 3, }
 console.log(x)
 
 // run()
+throw new Error('this is a fake error')

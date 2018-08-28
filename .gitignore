@@ -84,3 +84,6 @@ typings/
 
 # Serverless directories
 .serverless
+
+# build
+wolf

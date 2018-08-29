@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"hash/fnv"
 	"io/ioutil"
@@ -18,22 +19,26 @@ func main() {
 	}
 
 	filePath := args[0]
-	fmt.Println("reading", filePath)
-
 	latestHash, err := getFileHash(filePath)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("initial hash:", latestHash)
 
 	dir := getDir()
 	runPath := fmt.Sprintf("%s%s", dir, filePath[1:])
+	fmt.Println(latestHash, runPath)
 
-	initialOutput, err := runFile(runPath)
-	if err != nil {
-		printError("An error occured, watching for changes..")
-	}
-	fmt.Print(initialOutput)
+	clear()
+	printDefault(fmt.Sprintf("Watching file %s\n\n", filePath))
+	runWithOutput(runPath)
+
+	// initialOutput, err := runFile(runPath)
+	// if err != nil {
+	// 	printError("An error occured, watching for changes..")
+	// }
+	// fmt.Print(initialOutput)
+
+	shownMessage := false
 
 	for {
 		changed, newHash, err := checkForChanges(latestHash, filePath)
@@ -44,11 +49,16 @@ func main() {
 
 		if changed {
 			latestHash = newHash
-			fmt.Println("\nfound changes, running:")
-			run(filePath)
+			// run(runPath)
+			runWithOutput(runPath)
+			shownMessage = false
 		} else {
-			// fmt.Println("no changes found, watching..")
-			printDefault("No changes found, watching..")
+
+			if !shownMessage {
+				printDefault("No changes found, watching..\n")
+				shownMessage = true
+			}
+
 			time.Sleep(time.Second)
 		}
 	}
@@ -68,22 +78,64 @@ func checkForChanges(latestHash uint64, filePath string) (bool, uint64, error) {
 func run(path string) {
 	output, err := runFile(path)
 	if err != nil {
-		panic(output)
+		printError("An error occured, watching for changes..")
 	}
 	fmt.Print(output)
+}
+
+func runWithOutput(path string) {
+	command := fmt.Sprintf("node %s", path)
+	args := strings.Fields(command)
+	cmd := exec.Command(args[0], args[1:]...)
+	reader, err := cmd.StdoutPipe()
+	if err != nil {
+		panic(err)
+	}
+	scanner := bufio.NewScanner(reader)
+	go func() {
+		for scanner.Scan() {
+			fmt.Println(scanner.Text())
+		}
+	}()
+	if err := cmd.Start(); err != nil {
+		panic(err)
+	}
+	// if err := cmd.Wait(); err != nil {
+	// 	panic(err)
+	// }
 }
 
 func runFile(path string) (string, error) {
 	command := fmt.Sprintf("node %s", path)
 	args := strings.Fields(command)
 	cmd := exec.Command(args[0], args[1:]...)
-	output, err := cmd.CombinedOutput()
-	cmd.Run()
-	formatOutput := string(output[:])
+	// output, err := cmd.CombinedOutput()
+	// go cmd.Output()
+
+	reader, err := cmd.StdoutPipe()
 	if err != nil {
-		return fmt.Sprintf("\n%s", formatOutput), err
+		panic(err)
 	}
-	return formatOutput, nil
+	scanner := bufio.NewScanner(reader)
+	go func() {
+		for scanner.Scan() {
+			fmt.Println(scanner.Text())
+		}
+	}()
+
+	if err := cmd.Start(); err != nil {
+		panic(err)
+	}
+	if err := cmd.Wait(); err != nil {
+		panic(err)
+	}
+
+	return "", nil
+	// formatOutput := string(output[:])
+	// if err != nil {
+	// 	return fmt.Sprintf("\n%s", formatOutput), err
+	// }
+	// return formatOutput, nil
 }
 
 func getFileHash(filePath string) (uint64, error) {
@@ -110,9 +162,26 @@ func getDir() string {
 }
 
 func printError(out string) {
-	fmt.Printf("\x1b[31;1m%s\x1b[0m", out)
+	// clear()
+	ts := formatTS()
+	fmt.Printf("\x1b[31;1m[%s] %s\x1b[0m\n", ts, out)
 }
 
 func printDefault(out string) {
-	fmt.Printf("\x1b[34;1m%s\x1b[0m\n", out)
+	// clear()
+	ts := formatTS()
+	fmt.Printf("\n\x1b[34;1m[%s] %s\x1b[0m", ts, out)
+}
+
+func clear() {
+	cmd := exec.Command("clear")
+	cmd.Stdout = os.Stdout
+	cmd.Run()
+}
+
+func formatTS() string {
+	ts := time.Now()
+	return fmt.Sprintf("%d-%02d-%02dT%02d:%02d:%02d",
+		ts.Year(), ts.Month(), ts.Day(),
+		ts.Hour(), ts.Minute(), ts.Second())
 }

@@ -10,4 +10,4 @@ build:
 	go build -o $(EXEC) $(ENTRY)
 
 run: build
-	./$(EXEC) $(EX2)
+	./$(EXEC) $(EX1)

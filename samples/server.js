@@ -1,7 +1,16 @@
 const express = require('express');
 const app = express();
+
 app.get('/', (req, res) => {
-    console.log(req)
     res.send('Hello World!')
 });
-app.listen(3000, () => console.log('Example app listening on port 3000!'));
+
+app.get('/archimedes', (req, res) => {
+    res.json({ coming: "soon" })
+})
+
+app.listen(3000, () => {
+    console.log('example app listening on port 3000')
+});
+
+console.log('init')

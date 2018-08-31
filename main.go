@@ -2,9 +2,11 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"hash/fnv"
 	"io/ioutil"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,41 +28,27 @@ func main() {
 
 	dir := getDir()
 	runPath := fmt.Sprintf("%s%s", dir, filePath[1:])
-	fmt.Println(latestHash, runPath)
+	logChannel := createLogChannel()
 
-	clear()
-	printDefault(fmt.Sprintf("Watching file %s\n\n", filePath))
-	runWithOutput(runPath)
-
-	// initialOutput, err := runFile(runPath)
-	// if err != nil {
-	// 	printError("An error occured, watching for changes..")
-	// }
-	// fmt.Print(initialOutput)
-
-	shownMessage := false
+	watchingMessage := fmt.Sprintf("Running and watching for changes @%s\n\n", filePath)
+	printDefault(watchingMessage, false, true)
+	go runWithOutput(runPath, logChannel)
 
 	for {
 		changed, newHash, err := checkForChanges(latestHash, filePath)
 		if err != nil {
-			fmt.Println("error reading file, exiting")
-			continue
+			log.Fatal("Error reading file", filePath)
 		}
-
 		if changed {
 			latestHash = newHash
-			// run(runPath)
-			runWithOutput(runPath)
-			shownMessage = false
-		} else {
-
-			if !shownMessage {
-				printDefault("No changes found, watching..\n")
-				shownMessage = true
-			}
-
-			time.Sleep(time.Second)
+			close(logChannel)
+			logChannel = createLogChannel()
+			changedMessage := fmt.Sprintf("Detected changes, watching @%s\n\n", filePath)
+			printDefault(changedMessage, false, true)
+			go runWithOutput(runPath, logChannel)
+			// fmt.Println("changes detected, killing and creating new log channel")
 		}
+		time.Sleep(time.Second)
 	}
 }
 
@@ -75,67 +63,48 @@ func checkForChanges(latestHash uint64, filePath string) (bool, uint64, error) {
 	return false, 0, nil
 }
 
-func run(path string) {
-	output, err := runFile(path)
-	if err != nil {
-		printError("An error occured, watching for changes..")
-	}
-	fmt.Print(output)
-}
-
-func runWithOutput(path string) {
+func runWithOutput(path string, quit chan struct{}) {
 	command := fmt.Sprintf("node %s", path)
 	args := strings.Fields(command)
 	cmd := exec.Command(args[0], args[1:]...)
+
 	reader, err := cmd.StdoutPipe()
 	if err != nil {
-		panic(err)
+		panic(err.Error())
 	}
+
 	scanner := bufio.NewScanner(reader)
 	go func() {
-		for scanner.Scan() {
-			fmt.Println(scanner.Text())
+		for {
+			select {
+			case <-quit:
+				if err := cmd.Process.Kill(); err != nil {
+					log.Fatal("failed to kill process: ", err)
+				}
+				return
+			default:
+				for scanner.Scan() {
+					select {
+					case <-quit:
+						if err := cmd.Process.Kill(); err != nil {
+							log.Fatal("failed to kill process: ", err)
+						}
+						return
+					default:
+						fmt.Println(scanner.Text())
+					}
+				}
+			}
 		}
 	}()
+
 	if err := cmd.Start(); err != nil {
-		panic(err)
+		panic(err.Error())
 	}
 	// if err := cmd.Wait(); err != nil {
-	// 	panic(err)
+	// 	panic(err.Error())
 	// }
-}
-
-func runFile(path string) (string, error) {
-	command := fmt.Sprintf("node %s", path)
-	args := strings.Fields(command)
-	cmd := exec.Command(args[0], args[1:]...)
-	// output, err := cmd.CombinedOutput()
-	// go cmd.Output()
-
-	reader, err := cmd.StdoutPipe()
-	if err != nil {
-		panic(err)
-	}
-	scanner := bufio.NewScanner(reader)
-	go func() {
-		for scanner.Scan() {
-			fmt.Println(scanner.Text())
-		}
-	}()
-
-	if err := cmd.Start(); err != nil {
-		panic(err)
-	}
-	if err := cmd.Wait(); err != nil {
-		panic(err)
-	}
-
-	return "", nil
-	// formatOutput := string(output[:])
-	// if err != nil {
-	// 	return fmt.Sprintf("\n%s", formatOutput), err
-	// }
-	// return formatOutput, nil
+	printDebug(fmt.Sprintf("pid=%d", cmd.Process.Pid))
 }
 
 func getFileHash(filePath string) (uint64, error) {
@@ -167,10 +136,24 @@ func printError(out string) {
 	fmt.Printf("\x1b[31;1m[%s] %s\x1b[0m\n", ts, out)
 }
 
-func printDefault(out string) {
-	// clear()
+func printDefault(out string, withNewLine bool, withClear bool) {
+	var b bytes.Buffer
+
+	if withClear {
+		clear()
+	}
+	if withNewLine {
+		b.WriteString("\n")
+	}
+	str := "\x1b[34;1m[%s] %s\x1b[0m"
 	ts := formatTS()
-	fmt.Printf("\n\x1b[34;1m[%s] %s\x1b[0m", ts, out)
+	b.WriteString(fmt.Sprintf(str, ts, out))
+	fmt.Print(b.String())
+}
+
+func printDebug(out string) {
+	ts := formatTS()
+	fmt.Printf("\x1b[31;1m[DEBUG][%s] %s\x1b[0m\n", ts, out)
 }
 
 func clear() {
@@ -184,4 +167,8 @@ func formatTS() string {
 	return fmt.Sprintf("%d-%02d-%02dT%02d:%02d:%02d",
 		ts.Year(), ts.Month(), ts.Day(),
 		ts.Hour(), ts.Minute(), ts.Second())
+}
+
+func createLogChannel() chan struct{} {
+	return make(chan struct{})
 }

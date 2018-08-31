@@ -17,7 +17,8 @@ import (
 func main() {
 	args := os.Args[1:]
 	if len(args) == 0 {
-		panic("must specify filepath")
+		fmt.Fprintf(os.Stderr, "No file to watch specified e.g. \"wolf index.js\"\n")
+		os.Exit(1)
 	}
 
 	filePath := args[0]
